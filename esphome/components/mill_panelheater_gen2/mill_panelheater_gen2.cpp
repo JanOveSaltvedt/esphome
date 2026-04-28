@@ -1,24 +1,12 @@
-#include "esphome/components/climate/climate.h"
-#include "esphome/components/uart/uart.h"
-#include "esphome/core/log.h"
 #include "mill_panelheater_gen2.h"
-
-using namespace esphome::climate;
-using namespace esphome::uart;
+#include "esphome/core/log.h"
 
 namespace esphome {
 namespace mill_panelheater_gen2 {
 
-static const char *TAG = "millpanelheatergen2.climate";
+static const char *const TAG = "millpanelheatergen2.climate";
 
-char receivedChars[15];
-bool newData;
-// mill commandos
-char setPower[] = {0x00, 0x10, 0x06, 0x00, 0x47, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};  // Powertoggle er pos 5
-char setTemp[] = {0x00, 0x10, 0x22, 0x00, 0x46, 0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00};
-
-MillPanelHeaterGen2::MillPanelHeaterGen2() {
-  this->traits_ = climate::ClimateTraits();
+void MillPanelHeaterGen2::setup() {
   this->traits_.set_visual_target_temperature_step(1);
   this->traits_.set_visual_current_temperature_step(1);
   this->traits_.set_visual_min_temperature(5);
@@ -30,11 +18,8 @@ MillPanelHeaterGen2::MillPanelHeaterGen2() {
       climate::CLIMATE_MODE_OFF,
       climate::CLIMATE_MODE_HEAT,
   });
+  ESP_LOGI(TAG, "MillPanelHeaterGen2 initialization...");
 }
-
-MillPanelHeaterGen2::~MillPanelHeaterGen2() {}
-
-void MillPanelHeaterGen2::setup() { ESP_LOGI(TAG, "MillPanelHeaterGen2 initialization..."); }
 
 void MillPanelHeaterGen2::dump_config() {
   ESP_LOGCONFIG(TAG, "MillPanelHeaterGen2:");
@@ -43,112 +28,97 @@ void MillPanelHeaterGen2::dump_config() {
 }
 
 void MillPanelHeaterGen2::loop() {
-  recvWithStartEndMarkers();
+  this->recv_with_start_end_markers_();
 
-  if (newData) {
-    newData = false;
-    if (receivedChars[COMMAND_TYPE_POS] == 0xC9) {  // Filter out unnecessary information
-      // Parse target temperature
-      if (receivedChars[TARGET_TEMP_POS] != 0) {
-        this->target_temperature = receivedChars[6];
+  if (this->new_data_) {
+    this->new_data_ = false;
+    if ((uint8_t) this->received_chars_[COMMAND_TYPE_POS] == 0xC9) {
+      if (this->received_chars_[TARGET_TEMP_POS] != 0) {
+        this->target_temperature = this->received_chars_[TARGET_TEMP_POS];
       }
-      // Parse current temperature
-      if (receivedChars[CURRENT_TEMP_POS] != 0) {
-        this->current_temperature = receivedChars[7];
+      if (this->received_chars_[CURRENT_TEMP_POS] != 0) {
+        this->current_temperature = this->received_chars_[CURRENT_TEMP_POS];
       }
-      // Parse climate mode
-      // TODO bruke TARGET_TEMP_POS istede
-      if (receivedChars[MODE_POS] == 0x00) {
+      if (this->received_chars_[MODE_POS] == 0x00) {
         this->mode = climate::CLIMATE_MODE_OFF;
         this->action = climate::CLIMATE_ACTION_OFF;
-      } else if (receivedChars[MODE_POS] == 0x01) {
+      } else if (this->received_chars_[MODE_POS] == 0x01) {
         this->mode = climate::CLIMATE_MODE_HEAT;
       }
-
-      // Parse action
-      this->action = (receivedChars[ACTION_POS] == 0x00) ? climate::CLIMATE_ACTION_IDLE : climate::CLIMATE_ACTION_HEATING;
-
+      this->action = (this->received_chars_[ACTION_POS] == 0x00) ? climate::CLIMATE_ACTION_IDLE
+                                                                  : climate::CLIMATE_ACTION_HEATING;
       this->publish_state();
     }
   }
 }
 
-void MillPanelHeaterGen2::recvWithStartEndMarkers() {
-  static bool recvInProgress = false;
-  static uint8_t ndx = 0;
-  char rc;
-
-  if (this->available() > 0) {
-    rc = this->read();
-    if (recvInProgress) {
-      if ((rc != END_MARKER) && (rc != LINE_END_MARKER)) {
-        receivedChars[ndx] = (char) rc;
-        ndx++;
+void MillPanelHeaterGen2::recv_with_start_end_markers_() {
+  while (this->available() > 0) {
+    uint8_t rc = this->read();
+    if (this->recv_in_progress_) {
+      if (rc != END_MARKER && rc != LINE_END_MARKER) {
+        if (this->recv_index_ < BUFFER_SIZE) {
+          this->received_chars_[this->recv_index_++] = (char) rc;
+        }
       } else {
-        recvInProgress = false;
-        ndx = 0;
-        newData = true;
+        this->recv_in_progress_ = false;
+        this->recv_index_ = 0;
+        this->new_data_ = true;
       }
     } else if (rc == START_MARKER) {
-      recvInProgress = true;
+      this->recv_in_progress_ = true;
     }
   }
 }
 
-ClimateTraits MillPanelHeaterGen2::traits() { return traits_; }
+climate::ClimateTraits MillPanelHeaterGen2::traits() { return this->traits_; }
 
 void MillPanelHeaterGen2::control(const climate::ClimateCall &call) {
   ESP_LOGD(TAG, "Climate change requested");
 
   if (call.get_mode().has_value()) {
     switch (call.get_mode().value()) {
-      case CLIMATE_MODE_OFF:
-        sendCommand(setPower, sizeof(setPower), 0x00);
+      case climate::CLIMATE_MODE_OFF:
+        this->send_command_(this->power_command_, sizeof(this->power_command_), 0x00);
         break;
-      case CLIMATE_MODE_HEAT:
-        sendCommand(setPower, sizeof(setPower), 0x01);
+      case climate::CLIMATE_MODE_HEAT:
+        this->send_command_(this->power_command_, sizeof(this->power_command_), 0x01);
         break;
       default:
         break;
     }
-
-    ClimateMode mode = *call.get_mode();
-    this->mode = mode;
+    this->mode = call.get_mode().value();
     this->publish_state();
   }
 
   if (call.get_target_temperature().has_value()) {
-    // User requested target temperature change
-    int temp = *call.get_target_temperature();
-    sendCommand(setTemp, sizeof(setTemp), temp);
+    int temp = (int) call.get_target_temperature().value();
+    this->send_command_(this->temperature_command_, sizeof(this->temperature_command_), temp);
     this->target_temperature = temp;
     this->publish_state();
   }
 }
 
-/* Send serial data to the microcontroller */
-void MillPanelHeaterGen2::sendCommand(char *commandArray, int len, int command) {
+void MillPanelHeaterGen2::send_command_(uint8_t *command_array, int len, int command) {
   ESP_LOGD(TAG, "Sending serial command");
-  if (commandArray[4] == 0x46) {  // Temperature
-    commandArray[7] = command;
+  if (command_array[4] == 0x46) {  // Temperature command
+    command_array[7] = command;
   }
-  if (commandArray[4] == 0x47) {  // Power on/off
-    commandArray[5] = command;
-    commandArray[len] = 0x00;  // Padding
+  if (command_array[4] == 0x47) {  // Power on/off command
+    command_array[5] = command;
+    command_array[len] = 0x00;
   }
-  char crc = checksum(commandArray, len + 1);
-  ESP_LOGD(TAG, "Writing start byte");
-  write(START_MARKER);                  // Start byte
-  for (int i = 0; i < len + 1; i++) {  // Message
-    write(commandArray[i]);
+  uint8_t crc = this->checksum_(command_array, len + 1);
+  this->write_byte(START_MARKER);
+  for (int i = 0; i < len + 1; i++) {
+    this->write_byte(command_array[i]);
   }
-  write(crc);   // Control byte
-  write(END_MARKER);  // Stop byte
+  this->write_byte(crc);
+  this->write_byte(END_MARKER);
 }
 
-/*--- Function for calculating control byte checksum ---*/
-unsigned char MillPanelHeaterGen2::checksum(char *buf, int len) {
-  unsigned char chk = 0;
+uint8_t MillPanelHeaterGen2::checksum_(uint8_t *buf, int len) {
+  uint8_t chk = 0;
   for (; len != 0; len--) {
     chk += *buf++;
   }

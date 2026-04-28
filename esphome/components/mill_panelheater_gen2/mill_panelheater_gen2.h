@@ -9,8 +9,6 @@ namespace mill_panelheater_gen2 {
 
 class MillPanelHeaterGen2 : public Component, public climate::Climate, public uart::UARTDevice {
  public:
-  MillPanelHeaterGen2();
-  ~MillPanelHeaterGen2();
   void setup() override;
   void loop() override;
   void control(const climate::ClimateCall &call) override;
@@ -19,16 +17,7 @@ class MillPanelHeaterGen2 : public Component, public climate::Climate, public ua
  protected:
   climate::ClimateTraits traits() override;
 
- private:
-  void recvWithStartEndMarkers();
-  void sendCommand(char *commandArray, int len, int command);
-  unsigned char checksum(char *buf, int len);
-
   static constexpr size_t BUFFER_SIZE = 15;
-  char receivedChars[BUFFER_SIZE];
-  bool newData = false;
-
-  climate::ClimateTraits traits_;
 
   static constexpr size_t COMMAND_TYPE_POS = 4;
   static constexpr size_t TARGET_TEMP_POS = 6;
@@ -36,12 +25,24 @@ class MillPanelHeaterGen2 : public Component, public climate::Climate, public ua
   static constexpr size_t MODE_POS = 9;
   static constexpr size_t ACTION_POS = 11;
 
-  static constexpr char START_MARKER = 0x5A;
-  static constexpr char END_MARKER = 0x5B;
-  static constexpr char LINE_END_MARKER = 0x0A;
+  static constexpr uint8_t START_MARKER = 0x5A;
+  static constexpr uint8_t END_MARKER = 0x5B;
+  static constexpr uint8_t LINE_END_MARKER = 0x0A;
 
-  char powerCommand[12] = {0x00, 0x10, 0x06, 0x00, 0x47, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-  char temperatureCommand[12] = {0x00, 0x10, 0x22, 0x00, 0x46, 0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00};
+  char received_chars_[BUFFER_SIZE]{};
+  bool new_data_{false};
+  bool recv_in_progress_{false};
+  uint8_t recv_index_{0};
+
+  climate::ClimateTraits traits_;
+
+  uint8_t power_command_[12]{0x00, 0x10, 0x06, 0x00, 0x47, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t temperature_command_[12]{0x00, 0x10, 0x22, 0x00, 0x46, 0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00};
+
+ private:
+  void recv_with_start_end_markers_();
+  void send_command_(uint8_t *command_array, int len, int command);
+  uint8_t checksum_(uint8_t *buf, int len);
 };
 
 }  // namespace mill_panelheater_gen2
