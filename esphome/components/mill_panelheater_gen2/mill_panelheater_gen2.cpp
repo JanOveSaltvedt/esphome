@@ -11,9 +11,7 @@ void MillPanelHeaterGen2::setup() {
   this->traits_.set_visual_current_temperature_step(1);
   this->traits_.set_visual_min_temperature(5);
   this->traits_.set_visual_max_temperature(35);
-  this->traits_.set_supports_current_temperature(true);
-  this->traits_.set_supports_two_point_target_temperature(false);
-  this->traits_.set_supports_action(true);
+  this->traits_.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE | climate::CLIMATE_SUPPORTS_ACTION);
   this->traits_.set_supported_modes({
       climate::CLIMATE_MODE_OFF,
       climate::CLIMATE_MODE_HEAT,
