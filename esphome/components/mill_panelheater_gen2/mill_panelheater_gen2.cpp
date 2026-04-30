@@ -45,6 +45,10 @@ void MillPanelHeaterGen2::loop() {
       }
       this->action = (this->received_chars_[ACTION_POS] == 0x00) ? climate::CLIMATE_ACTION_IDLE
                                                                   : climate::CLIMATE_ACTION_HEATING;
+      if (this->power_sensor_ != nullptr) {
+        this->power_sensor_->publish_state(
+            this->action == climate::CLIMATE_ACTION_HEATING ? this->wattage_ : 0.0f);
+      }
       this->publish_state();
     }
   }

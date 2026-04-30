@@ -1,8 +1,9 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/uart/uart.h"
 
 namespace esphome {
 namespace mill_panelheater_gen2 {
@@ -13,6 +14,9 @@ class MillPanelHeaterGen2 : public Component, public climate::Climate, public ua
   void loop() override;
   void control(const climate::ClimateCall &call) override;
   void dump_config() override;
+
+  void set_wattage(float wattage) { this->wattage_ = wattage; }
+  void set_power_sensor(sensor::Sensor *s) { this->power_sensor_ = s; }
 
  protected:
   climate::ClimateTraits traits() override;
@@ -35,6 +39,9 @@ class MillPanelHeaterGen2 : public Component, public climate::Climate, public ua
   uint8_t recv_index_{0};
 
   climate::ClimateTraits traits_;
+
+  float wattage_{0.0f};
+  sensor::Sensor *power_sensor_{nullptr};
 
   uint8_t power_command_[12]{0x00, 0x10, 0x06, 0x00, 0x47, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t temperature_command_[12]{0x00, 0x10, 0x22, 0x00, 0x46, 0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00};
